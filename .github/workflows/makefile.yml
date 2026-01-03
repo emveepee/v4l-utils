@@ -1,0 +1,55 @@
+name: Makefile CI
+env:
+  CONTAINER: ubuntu:18:04
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        os-pull: [ubuntu:18.04, "arm64v8/ubuntu:18.04", "arm32v7/ubuntu:18.04"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install required packages
+      run: |
+        TARGET=${{ matrix.os-pull }}
+        echo ${TARGET}
+        echo "targetname=${TARGET}" >> $GITHUB_ENV
+        sudo apt-get update
+
+    - name: Configure docker
+      run: |
+        sudo docker pull ${{ matrix.os-pull}}
+        echo "exit" | sudo docker run --name ubuntu -i -v $(pwd):/data ${{ matrix.os-pull }} /bin/bash
+        sudo docker start ubuntu
+        sudo docker ps -a
+
+    - name: Configure and run script
+      run: |
+        sudo chmod +x setup.sh
+        sudo docker exec -i ubuntu /bin/bash /data/setup.sh
+
+    - name: Build DeviceHostLinux
+      run: |
+
+        sudo docker exec -i --user nextpvr ubuntu meson setup build/
+        sudo docker exec -i --user nextpvr ubuntu ninja -C build/
+        sudo docker stop ubuntu
+        sudo docker rm ubuntu
+
+    - uses: actions/download-artifact@v4
+    - name: Display structure of downloaded files
+      run: ls -ltR
+
+    - name: Upload Artifact GitHub Action
+      uses: actions/upload-artifact@v4
+      with:
+        name: libdvbv5.so.0${{ env.targetname }}
+        path: build/lib/libdvbv5
